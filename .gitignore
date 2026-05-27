@@ -1,0 +1,32 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# OS / editor
+.DS_Store
+
+# Claude / local tooling
+.claude/
+
+# Datasets (large, not redistributable)
+data/
+
+# Runtime logs & outputs
+logs/
+
+# Private / local working files
+files/
+
+# Binaries & build artifacts
+*.zip
+*.pkl
+*.pt
+*.pdf
+*.pptx
+*.docx
+
+# Paper / LaTeX sources (excluded from the code repository)
+paper/
