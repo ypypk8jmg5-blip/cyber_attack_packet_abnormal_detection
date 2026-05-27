@@ -30,3 +30,6 @@ files/
 
 # Paper / LaTeX sources (excluded from the code repository)
 paper/
+
+# Paper review notes (local only)
+paper_review_*.md
