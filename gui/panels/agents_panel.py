@@ -1,16 +1,12 @@
-"""Agents Panel — 32개 에이전트 상태 (대시보드 컴팩트 버전)"""
+"""Agents Panel — 32개 에이전트 상태 (운영 compact / 발표 stage 모드)"""
 import re
 from PyQt5.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QLabel, QFrame
+    QWidget, QVBoxLayout, QHBoxLayout, QScrollArea, QLabel
 )
-from PyQt5.QtCore import Qt, pyqtSlot
-from PyQt5.QtGui import QFont
+from PyQt5.QtCore import pyqtSlot
 
-_STYLE = {
-    "IDLE":   "background:#4a5568; color:#cbd5e0; border-radius:3px; padding:2px 5px; font-size:10px;",
-    "ACTIVE": "background:#2ecc71; color:white;   border-radius:3px; padding:2px 5px; font-size:10px;",
-    "ERROR":  "background:#e74c3c; color:white;   border-radius:3px; padding:2px 5px; font-size:10px;",
-}
+from gui import theme
+from gui.widgets.agent_cell import AgentCell
 
 LAYERS = [
     ("L0 생성",  [("agent-00-adaptive-packet-generator", "00:AI생성기")]),
@@ -67,67 +63,83 @@ _ID_PATTERN    = re.compile(r'\[agent-([0-9]+-[\w-]+)\]', re.IGNORECASE)
 # → stderr 내용에 포함된 "ModuleNotFoundError:" 등 오탐 방지
 _ERROR_PATTERN = re.compile(r'\[error\]', re.IGNORECASE)
 
+# 모드별 패널 치수 — compact: 운영 뷰(기존 크기 유지), stage: 발표 뷰
+_MODE_UI = {
+    "compact": {"title": 14, "layer_w": 80,  "layer_font": 10, "legend": 10,
+                "row_pad": (6, 4), "row_radius": 4, "spacing": 3, "show_title": True},
+    "stage":   {"title": 20, "layer_w": 130, "layer_font": 14, "legend": 13,
+                "row_pad": (14, 9), "row_radius": 6, "spacing": 8, "show_title": False},
+}
+
 
 class AgentsPanel(QWidget):
-    def __init__(self, parent=None):
+    def __init__(self, mode: str = "compact", parent=None):
         super().__init__(parent)
-        self._labels: dict[str, QLabel] = {}
+        self._ui = _MODE_UI[mode]
+        self._mode = mode
+        self._cells: dict[str, AgentCell] = {}
         self._setup_ui()
 
     def _setup_ui(self):
+        ui = self._ui
         root = QVBoxLayout(self)
         root.setContentsMargins(10, 10, 10, 6)
         root.setSpacing(4)
 
-        title = QLabel("에이전트 상태  (32개)")
-        title.setStyleSheet("color:#ecf0f1; font-size:14px; font-weight:bold;")
-        root.addWidget(title)
+        if ui["show_title"]:
+            title = QLabel("에이전트 상태  (32개)")
+            title.setStyleSheet(
+                f"color:{theme.TEXT}; font-size:{ui['title']}px; font-weight:bold;")
+            root.addWidget(title)
 
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea{border:none; background:#1a252f;}")
+        scroll.setStyleSheet(
+            f"QScrollArea{{border:none; background:{theme.BG_DEEP};}}")
 
         inner = QWidget()
-        inner.setStyleSheet("background:#1a252f;")
+        inner.setStyleSheet(f"background:{theme.BG_DEEP};")
         iv = QVBoxLayout(inner)
         iv.setContentsMargins(0, 0, 0, 0)
-        iv.setSpacing(3)
+        iv.setSpacing(ui["spacing"])
 
+        pad_h, pad_v = ui["row_pad"]
         for layer_name, agents in LAYERS:
             row_widget = QWidget()
             row_widget.setStyleSheet(
-                "background:#22303c; border-radius:4px;")
+                f"background:{theme.BG_CARD}; border-radius:{ui['row_radius']}px;")
             row_layout = QHBoxLayout(row_widget)
-            row_layout.setContentsMargins(6, 4, 6, 4)
-            row_layout.setSpacing(5)
+            row_layout.setContentsMargins(pad_h, pad_v, pad_h, pad_v)
+            row_layout.setSpacing(ui["spacing"] + 2)
 
             # 레이어 이름
             lyr_lbl = QLabel(layer_name)
             lyr_lbl.setStyleSheet(
-                "color:#7f8c8d; font-size:10px; font-weight:bold;")
-            lyr_lbl.setFixedWidth(80)
+                f"color:{theme.TEXT_DIM}; font-size:{ui['layer_font']}px; font-weight:bold;")
+            lyr_lbl.setFixedWidth(ui["layer_w"])
             row_layout.addWidget(lyr_lbl)
 
-            # 에이전트 뱃지
+            # 에이전트 셀
             for agent_id, display in agents:
-                badge = QLabel(display)
-                badge.setStyleSheet(_STYLE["IDLE"])
-                badge.setAlignment(Qt.AlignCenter)
-                self._labels[agent_id] = badge
-                row_layout.addWidget(badge)
+                cell = AgentCell(display, mode=self._mode)
+                self._cells[agent_id] = cell
+                row_layout.addWidget(cell)
 
             row_layout.addStretch()
-            iv.addWidget(row_widget)
+            # 스테이지 모드: 행들이 세로 공간을 균등 분할 (프로젝터 화면 채움)
+            iv.addWidget(row_widget, 1 if self._mode == "stage" else 0)
 
         # 범례
         legend = QLabel(
-            '<span style="color:#2ecc71">● ACTIVE</span>'
-            '  <span style="color:#4a5568">● IDLE</span>'
-            '  <span style="color:#e74c3c">● ERROR</span>')
-        legend.setStyleSheet("color:#bdc3c7; font-size:10px; padding:2px;")
-        legend.setTextFormat(Qt.RichText)
+            f'<span style="color:{theme.GREEN}">● 활동</span>'
+            f'  <span style="color:{theme.GREEN_WARM}">● 잔광</span>'
+            f'  <span style="color:{theme.GRAY_IDLE_BG}">● 대기</span>'
+            f'  <span style="color:{theme.RED}">● 오류</span>')
+        legend.setStyleSheet(
+            f"color:{theme.TEXT_MUTED}; font-size:{ui['legend']}px; padding:2px;")
         iv.addWidget(legend)
-        iv.addStretch()
+        if self._mode == "compact":
+            iv.addStretch()
 
         scroll.setWidget(inner)
         root.addWidget(scroll)
@@ -136,20 +148,28 @@ class AgentsPanel(QWidget):
     @pyqtSlot(str)
     def on_stdout_line(self, line: str):
         m = _ID_PATTERN.search(line)
-        if m:
-            agent_id = "agent-" + m.group(1).lower()
-            # [ERROR] 괄호 토큰이 명시적으로 있을 때만 ERROR 표시
-            # ("ModuleNotFoundError:", "ValueError:" 등 포함 라인 오탐 방지)
-            state = "ERROR" if _ERROR_PATTERN.search(line) else "ACTIVE"
-            if agent_id in self._labels:
-                self._labels[agent_id].setStyleSheet(_STYLE[state])
+        if not m:
+            return
+        agent_id = "agent-" + m.group(1).lower()
+        cell = self._cells.get(agent_id)
+        if cell is None:
+            return
+        # [ERROR] 괄호 토큰이 명시적으로 있을 때만 ERROR 표시
+        if _ERROR_PATTERN.search(line):
+            cell.set_error()
+        else:
+            cell.ping()
 
     @pyqtSlot(str)
     def on_state_changed(self, state: str):
         if state in ("DONE", "IDLE", "ERROR"):
-            for lbl in self._labels.values():
-                lbl.setStyleSheet(_STYLE["IDLE"])
+            self.reset_all()
         elif state == "RUNNING":
-            aid = "agent-17-pipeline-orchestrator"
-            if aid in self._labels:
-                self._labels[aid].setStyleSheet(_STYLE["ACTIVE"])
+            self.reset_all()
+            orchestrator = self._cells.get("agent-17-pipeline-orchestrator")
+            if orchestrator:
+                orchestrator.ping()
+
+    def reset_all(self):
+        for cell in self._cells.values():
+            cell.reset()

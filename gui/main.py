@@ -21,7 +21,7 @@ from PyQt5.QtWidgets import QApplication
 from PyQt5.QtCore import Qt
 
 
-def main():
+def main(present: bool = False):
     # High-DPI 지원
     QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
     QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
@@ -48,5 +48,7 @@ def main():
     from gui.app_window import AppWindow
     window = AppWindow()
     window.show()
+    if present:
+        window.set_present(True)
 
     sys.exit(app.exec_())

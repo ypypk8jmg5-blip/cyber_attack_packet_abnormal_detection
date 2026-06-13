@@ -1,6 +1,6 @@
 """
 Agent-08: RuleSignatureAgent  (weight=0.25)
-Role: Hard-coded deterministic signature rules for all 11 known attack types.
+Role: Hard-coded deterministic signature rules for all 14 known attack types.
 Stateless, < 1ms.  Matched confidence = 0.95; no match = 0.05.
 """
 from __future__ import annotations
@@ -20,8 +20,8 @@ _RULES: List[Tuple[str, Any, str]] = [
     ),
     (
         "ddos",
-        lambda f: f["packets_per_sec"] > 500 and f["connection_count"] > 300,
-        "packets_per_sec>500 AND connection_count>300",
+        lambda f: f["packets_per_sec"] > 500 and f["connection_count"] > 300 and f["packet_size"] < 150,
+        "packets_per_sec>500 AND connection_count>300 AND packet_size<150",
     ),
     (
         "http_flood",
@@ -44,6 +44,11 @@ _RULES: List[Tuple[str, Any, str]] = [
         "protocol=ICMP AND packets_per_sec>100 AND duration<0.05",
     ),
     (
+        "dns_amplification",
+        lambda f: int(f["dst_port"]) == 53 and f["packet_size"] > 1000 and f["packets_per_sec"] > 100,
+        "dst_port=53(DNS) AND packet_size>1000 AND packets_per_sec>100",
+    ),
+    (
         "dns_tunneling",
         lambda f: int(f["dst_port"]) == 53 and f["packet_size"] > 400,
         "dst_port=53(DNS) AND packet_size>400",
@@ -54,6 +59,15 @@ _RULES: List[Tuple[str, Any, str]] = [
         "failed_attempts>50 AND unique_dst_ports<=3 AND duration<1s",
     ),
     (
+        "credential_stuffing",
+        lambda f: (
+            int(f["dst_port"]) in {80, 443, 22, 25}
+            and f["connection_count"] >= 50
+            and 3 <= f["failed_attempts"] <= 25
+        ),
+        "auth/web dst_port AND connection_count>=50 AND failed_attempts=3..25",
+    ),
+    (
         "exfiltration",
         lambda f: f["outbound_ratio"] > 0.85 and f["bytes_per_sec"] > 5_000_000,
         "outbound_ratio>0.85 AND bytes_per_sec>5MB",
@@ -62,6 +76,11 @@ _RULES: List[Tuple[str, Any, str]] = [
         "botnet_c2",
         lambda f: int(f["dst_port"]) in {4444, 6667, 1080, 8443, 9001},
         "dst_port in known C2 ports [4444,6667,1080,8443,9001]",
+    ),
+    (
+        "cryptomining",
+        lambda f: int(f["dst_port"]) in {3333, 14444, 45700, 9999} and f["duration"] > 3600,
+        "dst_port in mining-pool ports AND duration>3600s",
     ),
     (
         "slowloris",

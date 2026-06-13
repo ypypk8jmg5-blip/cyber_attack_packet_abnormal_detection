@@ -10,7 +10,7 @@ import json
 import os
 import threading
 import time
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Dict, List, Optional
 
 import joblib
@@ -72,7 +72,7 @@ class OnlineModelUpdater:
             )
             clf.fit(X_scaled, y)
 
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            ts = utcnow().strftime("%Y%m%d_%H%M%S_%f")
             path = os.path.join(MODEL_DIR, f"{CANDIDATE_PREFIX}_{ts}.pkl")
             bundle = {"model": clf, "scaler": scaler, "features": FEATURE_NAMES}
             joblib.dump(bundle, path)

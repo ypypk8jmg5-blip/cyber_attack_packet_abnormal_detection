@@ -116,10 +116,14 @@ Outputs are written to `logs/dashboard.json`, `data/metrics/latest.json`, and
 ### Real-time dashboard
 
 ```bash
-python3 run_gui.py
+python3 run_gui.py            # operations view
+python3 run_gui.py --present  # presentation stage view (fullscreen)
 ```
 A PyQt5 dashboard shows Phase-1 training metrics, Phase-2 detection/alerts, the
 32-agent status grid, and a live log. It launches and monitors `run_pipeline.py`.
+`--present` (or `F5` at runtime) switches to a fullscreen stage view for demos:
+an enlarged 32-agent grid with activity flash/decay animations, key-event banners
+(launch / detection / retraining), and three large headline stats. `Esc` exits.
 
 ### Individual stages
 

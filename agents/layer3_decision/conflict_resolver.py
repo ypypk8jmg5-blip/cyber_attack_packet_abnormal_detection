@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Optional
 
 from agents.base_agent import AggregatedDecision, BaseAgent
@@ -79,7 +79,7 @@ class ConflictResolver(BaseAgent):
         try:
             os.makedirs(os.path.dirname(self._conflict_log), exist_ok=True)
             entry = {
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": utcnow().isoformat(),
                 "packet_id": decision.packet_id,
                 "conflict_type": conflict_type,
                 "score": decision.aggregate_score,

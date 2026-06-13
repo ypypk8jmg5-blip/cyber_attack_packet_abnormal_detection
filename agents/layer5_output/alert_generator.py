@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Dict, Optional
 
 from agents.layer5_output.severity_classifier import SeverityResult
@@ -29,7 +29,7 @@ _log = logging.getLogger("detection")
 def _build_alert(result: SeverityResult) -> Dict[str, Any]:
     decision = result.final_decision
     ep = decision.enriched_packet
-    ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+    ts = utcnow().strftime("%Y%m%d_%H%M%S_%f")
 
     src_ip = ep.metadata.get("src_ip", "unknown") if ep else "unknown"
     dst_port = ep.metadata.get("dst_port", 0) if ep else 0
@@ -43,7 +43,7 @@ def _build_alert(result: SeverityResult) -> Dict[str, Any]:
     return {
         # --- backward-compatible fields ---
         "alert_id":        f"ALT-{ts}",
-        "timestamp":       datetime.utcnow().isoformat(),
+        "timestamp":       utcnow().isoformat(),
         "severity":        result.severity,
         "attack_type":     result.attack_type or "unknown",
         "confidence":      round(result.confidence, 4),
@@ -95,8 +95,8 @@ class AlertGenerator:
         os.makedirs("logs", exist_ok=True)
         # 세션 시작 시 누적 카운터 초기화
         self._summary: Dict[str, Any] = {
-            "session_start":      datetime.utcnow().isoformat(),
-            "last_updated":       datetime.utcnow().isoformat(),
+            "session_start":      utcnow().isoformat(),
+            "last_updated":       utcnow().isoformat(),
             "total_alerts":       0,
             "by_severity":        {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 0, "LOW": 0},
             "by_attack_type":     {},
@@ -123,7 +123,7 @@ class AlertGenerator:
         self._summary["batches_processed"]  = batches
         self._summary["packets_processed"]  = packets
         self._summary["anomalies_detected"] = anomalies
-        self._summary["last_updated"] = datetime.utcnow().isoformat()
+        self._summary["last_updated"] = utcnow().isoformat()
         self._write_summary()
 
     def _accumulate(self, alert: Dict[str, Any]) -> None:
@@ -136,7 +136,7 @@ class AlertGenerator:
         s["by_attack_type"][atype] = s["by_attack_type"].get(atype, 0) + 1
         s["top_src_ips"][src_ip] = s["top_src_ips"].get(src_ip, 0) + 1
         s["anomalies_detected"] = s["total_alerts"]
-        s["last_updated"] = datetime.utcnow().isoformat()
+        s["last_updated"] = utcnow().isoformat()
         self._write_summary()
 
     def _write_summary(self) -> None:
@@ -156,7 +156,7 @@ class AlertGenerator:
             pass
 
     def _write(self, alert: Dict[str, Any]) -> None:
-        ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+        ts = utcnow().strftime("%Y%m%d_%H%M%S_%f")
         path = os.path.join(self._alerts_dir, f"alert_{ts}.json")
         try:
             with open(path, "w") as f:

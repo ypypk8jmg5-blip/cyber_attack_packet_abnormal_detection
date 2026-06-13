@@ -12,9 +12,9 @@ from typing import Optional
 from agents.base_agent import BaseAgent, FinalDecision
 
 SEVERITY_MAP = {
-    "CRITICAL": {"ddos", "synflood", "ransomware", "http_flood"},
-    "HIGH":     {"portscan", "arp_spoofing", "dns_tunneling"},
-    "MEDIUM":   {"bruteforce", "exfiltration", "botnet_c2"},
+    "CRITICAL": {"ddos", "synflood", "ransomware", "http_flood", "dns_amplification"},
+    "HIGH":     {"portscan", "arp_spoofing", "dns_tunneling", "cryptomining"},
+    "MEDIUM":   {"bruteforce", "exfiltration", "botnet_c2", "credential_stuffing"},
     "LOW":      {"slowloris"},
 }
 

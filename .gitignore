@@ -33,3 +33,6 @@ paper/
 
 # Paper review notes (local only)
 paper_review_*.md
+
+# EV charging work is its own independent git repository
+/ev_car_anomaly_detection/

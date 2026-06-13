@@ -112,6 +112,13 @@ class TestGeneratePackets:
         assert 445 not in df_ftp['dst_port'].values, "Bug 5 미수정: gen_file_transfer에 포트 445 존재"
         assert 445 in df_ransom['dst_port'].values, "랜섬웨어는 여전히 포트 445 사용해야 함"
 
+    def test_ai_generator_normal_ftp_matches_safe_distribution(self):
+        from agents.layer0_generation.adaptive_packet_generator import AdaptivePacketGenerator
+        df = AdaptivePacketGenerator()._gen_normal_ftp(500, 1.0)
+        assert 445 not in df['dst_port'].values, "AI 생성기 정상 FTP에 포트 445 존재"
+        assert df['packets_per_sec'].between(1, 50).all()
+        assert df['bytes_per_sec'].max() <= 500_000
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # TestTrainModel
@@ -219,6 +226,17 @@ class TestEvaluateModel:
             results[atype] = recall_score(df['label'].values, y_pred, zero_division=0)
 
         assert set(results.keys()) == set(ALL_ATTACK_TYPES), "14종이 모두 평가되지 않음"
+
+    def test_rule_signature_covers_all_14_attack_types(self):
+        from agents.layer2_analysis.rule_signature_agent import _RULES
+        covered = {attack_type for attack_type, _, _ in _RULES}
+        assert set(ALL_ATTACK_TYPES).issubset(covered)
+
+    def test_multi_agent_shared_maps_cover_all_14_attack_types(self):
+        from agents.base_agent import ATTACK_TYPES as SHARED_ATTACK_TYPES
+        from agents.layer5_output.severity_classifier import _TYPE_TO_BASE
+        assert set(SHARED_ATTACK_TYPES) == set(ALL_ATTACK_TYPES)
+        assert set(ALL_ATTACK_TYPES).issubset(_TYPE_TO_BASE)
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -343,6 +361,26 @@ class TestDetectAnomaly:
 class TestSimulateStream:
     """simulate_stream.py 유닛 테스트"""
 
+    @staticmethod
+    def _make_forced_normal(kind, n=500):
+        import scripts.simulate_stream as sim
+        original_choice = sim.np.random.choice
+
+        def forced_choice(values, *args, **kwargs):
+            try:
+                if list(values) == ['web', 'dns', 'ftp', 'stream', 'email',
+                                    'voip', 'gaming', 'iot', 'backup', 'ssh']:
+                    return kind
+            except TypeError:
+                pass
+            return original_choice(values, *args, **kwargs)
+
+        sim.np.random.choice = forced_choice
+        try:
+            return pd.DataFrame(sim.make_normal(n))
+        finally:
+            sim.np.random.choice = original_choice
+
     def test_creates_incoming_csv_files(self):
         # 기존 incoming 파일 목록 저장
         before = set(glob.glob(os.path.join(PROJECT_ROOT, 'data', 'stream', 'incoming_*.csv')))
@@ -403,6 +441,14 @@ class TestSimulateStream:
         found = set(attack_df['attack_type'].unique())
         missing = set(ALL_ATTACK_TYPES) - found
         assert not missing, f"스트림에서 미등장 공격 유형: {missing}"
+
+    def test_normal_stream_profiles_stay_in_safe_ranges(self):
+        for kind in ('ftp', 'voip', 'gaming', 'backup'):
+            df = self._make_forced_normal(kind)
+            assert 445 not in df['dst_port'].values, f"{kind}: 정상 트래픽에 포트 445 존재"
+            assert 139 not in df['dst_port'].values, f"{kind}: 정상 트래픽에 포트 139 존재"
+            assert df['packets_per_sec'].between(0.1, 50).all(), kind
+            assert df['failed_attempts'].between(0, 2).all(), kind
 
 
 # ──────────────────────────────────────────────────────────────────────────────

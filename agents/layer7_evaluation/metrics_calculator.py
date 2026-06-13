@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Dict, List, Optional
 
 import joblib
@@ -89,7 +89,7 @@ class MetricsCalculator:
             "per_attack_recall": per_attack_recall,
             "continue_training": continue_training,
             "is_best_model":     is_best,
-            "timestamp":         datetime.utcnow().isoformat(),
+            "timestamp":         utcnow().isoformat(),
         }
 
         self._write_latest(result)

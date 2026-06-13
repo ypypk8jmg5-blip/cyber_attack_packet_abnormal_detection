@@ -85,10 +85,10 @@ def main():
     y_prob = clf.predict_proba(X_s)[:, 1]
     y_prob, y_pred = apply_signature_overrides(df, y_prob, y_pred)
 
-    # 지표 계산
-    f1 = f1_score(y_true, y_pred)
-    recall = recall_score(y_true, y_pred)
-    precision = precision_score(y_true, y_pred)
+    # 지표 계산 (zero_division=0: 양성 예측이 없는 배치에서 UndefinedMetricWarning 방지)
+    f1 = f1_score(y_true, y_pred, zero_division=0)
+    recall = recall_score(y_true, y_pred, zero_division=0)
+    precision = precision_score(y_true, y_pred, zero_division=0)
     accuracy = accuracy_score(y_true, y_pred)
     try:
         loss = log_loss(y_true, y_prob)

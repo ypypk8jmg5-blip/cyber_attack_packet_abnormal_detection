@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 from collections import Counter, defaultdict
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Dict, List, Optional
 
 FP_REPORT_DIR = "data/metrics"
@@ -40,7 +40,7 @@ class FalsePositiveAnalyzer:
             "fp_by_true_class":         dict(by_true.most_common(10)),
             "top_patterns":             patterns[:5],
             "recommendations":          recommendations,
-            "timestamp":                datetime.utcnow().isoformat(),
+            "timestamp":                utcnow().isoformat(),
         }
 
         self._save(result, cycle)
@@ -114,7 +114,7 @@ class FalsePositiveAnalyzer:
     def _save(self, result: Dict[str, Any], cycle: int) -> None:
         try:
             os.makedirs(FP_REPORT_DIR, exist_ok=True)
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            ts = utcnow().strftime("%Y%m%d_%H%M%S_%f")
             path = os.path.join(FP_REPORT_DIR, f"fp_analysis_{ts}.json")
             with open(path, "w") as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)

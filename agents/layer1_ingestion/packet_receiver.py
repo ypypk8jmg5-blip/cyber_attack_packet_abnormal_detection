@@ -8,7 +8,7 @@ from __future__ import annotations
 import glob
 import os
 import time
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, List, Optional, Set
 
 import pandas as pd
@@ -50,7 +50,7 @@ class PacketReceiver(BaseAgent):
     def _load(self, path: str) -> Optional[RawBatch]:
         try:
             df = pd.read_csv(path)
-            ts = datetime.utcnow().isoformat()
+            ts = utcnow().isoformat()
             basename = os.path.basename(path)
             # batch_id derived from filename timestamp portion
             batch_id = "BATCH-" + basename.replace("incoming_", "").replace(".csv", "")

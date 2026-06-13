@@ -7,7 +7,7 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Dict, List, Optional
 
 
@@ -22,7 +22,7 @@ class RawBatch:
     raw_packets: List[Dict[str, Any]]
     source_file: str
     packet_count: int
-    receive_timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    receive_timestamp: str = field(default_factory=lambda: utcnow().isoformat())
 
 
 @dataclass
@@ -66,7 +66,7 @@ class AnalysisVote:
     attack_type: Optional[str]
     evidence: Dict[str, str]
     processing_time_ms: float
-    analysis_timestamp: str = field(default_factory=lambda: datetime.utcnow().isoformat())
+    analysis_timestamp: str = field(default_factory=lambda: utcnow().isoformat())
 
     @classmethod
     def neutral(cls, agent_id: str, packet_id: str) -> "AnalysisVote":
@@ -146,7 +146,8 @@ PORT_SERVICE_MAP = {
 ATTACK_TYPES = [
     "ddos", "synflood", "http_flood", "ransomware", "portscan",
     "arp_spoofing", "dns_tunneling", "bruteforce", "exfiltration",
-    "botnet_c2", "slowloris",
+    "botnet_c2", "slowloris", "cryptomining", "dns_amplification",
+    "credential_stuffing",
 ]
 
 

@@ -12,7 +12,7 @@ import os
 import statistics
 import threading
 import time
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Deque, Dict, List, Optional
 
 DASHBOARD_PATH = "logs/dashboard.json"
@@ -90,7 +90,7 @@ class PerformanceMonitor:
                 }
 
         return {
-            "generated_at":            datetime.utcnow().isoformat(),
+            "generated_at":            utcnow().isoformat(),
             "throughput_pps":          round(throughput, 2),
             "packets_processed":       self._packet_count,
             "e2e_latency_p50_ms":     round(p50, 2),
@@ -120,6 +120,6 @@ class PerformanceMonitor:
             msg = f"[PERF ALERT] P95 latency={p95:.1f}ms exceeds SLA={SLA_LATENCY_P95_MS}ms"
             try:
                 with open(PERF_ALERT_LOG, "a") as f:
-                    f.write(f"{datetime.utcnow().isoformat()} {msg}\n")
+                    f.write(f"{utcnow().isoformat()} {msg}\n")
             except Exception:
                 pass

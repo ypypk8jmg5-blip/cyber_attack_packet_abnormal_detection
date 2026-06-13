@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Dict, List, Optional
 
 REPORTS_DIR = "data/reports"
@@ -29,8 +29,8 @@ class ReportGenerator:
         cycle: int = 1,
     ) -> Dict[str, Any]:
 
-        ts = datetime.utcnow().isoformat()
-        report_id = f"RPT-{datetime.utcnow().strftime('%Y%m%d-%H%M%S')}"
+        ts = utcnow().isoformat()
+        report_id = f"RPT-{utcnow().strftime('%Y%m%d-%H%M%S')}"
 
         training_status = self._training_status(metrics_result, cycle)
         detection_perf = self._detection_performance(perf_stats)
@@ -121,7 +121,7 @@ class ReportGenerator:
     def _save(self, report: Dict[str, Any]) -> None:
         try:
             os.makedirs(REPORTS_DIR, exist_ok=True)
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            ts = utcnow().strftime("%Y%m%d_%H%M%S_%f")
             path = os.path.join(REPORTS_DIR, f"report_{ts}.json")
             with open(path, "w") as f:
                 json.dump(report, f, indent=2, ensure_ascii=False)

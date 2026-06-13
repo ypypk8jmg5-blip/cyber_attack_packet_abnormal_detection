@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Dict, List
 
 from agents.base_agent import ATTACK_TYPES
@@ -64,7 +64,7 @@ class AttackCoverageAgent:
 
         result = {
             "cycle":             cycle,
-            "timestamp":         datetime.utcnow().isoformat(),
+            "timestamp":         utcnow().isoformat(),
             "overall_coverage":  round(overall_coverage, 4),
             "coverage_summary": {
                 "fully_covered":    fully,
@@ -92,7 +92,7 @@ class AttackCoverageAgent:
     def _save(self, result: Dict[str, Any]) -> None:
         try:
             os.makedirs(COVERAGE_DIR, exist_ok=True)
-            ts = datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
+            ts = utcnow().strftime("%Y%m%d_%H%M%S_%f")
             path = os.path.join(COVERAGE_DIR, f"coverage_{ts}.json")
             with open(path, "w") as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)

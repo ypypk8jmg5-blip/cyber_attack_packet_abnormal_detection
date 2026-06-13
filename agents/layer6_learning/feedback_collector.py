@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import os
 import threading
-from datetime import datetime
+from agents._timeutil import utcnow
 from typing import Any, Callable, Dict, List, Optional
 
 FEEDBACK_PATH = "data/feedback/feedback_log.jsonl"
@@ -36,7 +36,7 @@ class FeedbackCollector:
             "alert_id":             alert.get("alert_id", ""),
             "feedback_type":        feedback_type,   # true_positive | false_positive | false_negative
             "operator_id":          operator_id,
-            "timestamp":            datetime.utcnow().isoformat(),
+            "timestamp":            utcnow().isoformat(),
             "corrected_attack_type": corrected_attack_type,
             "packet_features":      alert.get("key_features", {}),
             "predicted_attack_type": alert.get("attack_type"),

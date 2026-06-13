@@ -38,9 +38,13 @@ BASE_ATTACK_PARAMS: Dict[str, Dict] = {
     "botnet_c2":    {"duration":         (0.1, 2),    "packets_per_sec": (0.1, 5),     "dst_port_choices": [4444, 6667, 1080, 8443, 9001]},
     "ransomware":   {"bytes_per_sec":    (1e6, 2e7),  "unique_dst_ports": (50, 300),   "failed_attempts": (10, 100)},
     "arp_spoofing": {"protocol_fixed":   2,           "packets_per_sec": (100, 1000),  "duration": (0.001, 0.05)},
+    "cryptomining":       {"duration": (3600, 86400), "outbound_ratio": (0.70, 0.95), "dst_port_choices": [3333, 14444, 45700, 9999]},
+    "dns_amplification":  {"bytes_per_sec": (5e6, 1e8), "packet_size": (1000, 4000),   "dst_port_fixed": 53},
+    "credential_stuffing":{"failed_attempts": (3, 20),  "connection_count": (50, 500), "dst_port_choices": [80, 443, 22, 25]},
 }
 
-NORMAL_TYPES = ["normal_web", "normal_dns", "normal_ftp", "normal_stream", "normal_email"]
+NORMAL_TYPES = ["normal_web", "normal_dns", "normal_ftp", "normal_stream", "normal_email",
+                "normal_voip", "normal_gaming", "normal_iot", "normal_backup", "normal_ssh"]
 ATTACK_TYPES = list(BASE_ATTACK_PARAMS.keys())
 TARGET_RECALL = 0.90
 METRICS_DIR = "data/metrics"
@@ -87,8 +91,10 @@ class AdaptivePacketGenerator:
         # 4. 공격 트래픽 생성 (적응형 비율 적용)
         attack_df = self._generate_attacks(n_attack_total, cycle)
 
-        # 5. 경계 샘플 추가 (전체의 5%)
-        boundary_df = self._generate_boundary_samples(int(total_size * 0.05), cycle)
+        # 5. 경계 샘플 추가 (전체의 2%)
+        #    경계 샘플은 정상 영역과 겹치는 공격 라벨이라 과도하면 precision을 깎는다.
+        #    BAT 효과는 유지하되 비율을 5%→2%로 낮춰 오탐 폭증을 방지.
+        boundary_df = self._generate_boundary_samples(int(total_size * 0.02), cycle)
 
         # 6. 병합·셔플
         df = pd.concat([normal_df, attack_df, boundary_df], ignore_index=True)
@@ -106,18 +112,43 @@ class AdaptivePacketGenerator:
     # ── Step 1: 피드백 로드 ────────────────────────────────────────────────────
 
     def _load_feedback(self, cycle: int) -> None:
-        """Agent-31(AttackCoverage) + Agent-30(FalsePositive) 최신 출력 로드."""
-        # 공격 유형별 Recall (Agent-31)
-        coverage_files = sorted(glob.glob(f"{METRICS_DIR}/coverage_*.json"))
-        if coverage_files:
+        """이전 사이클 평가 결과(공격 유형별 Recall)를 로드해 적응형 가중치에 사용.
+
+        1순위: evaluate_model.py가 매 사이클 갱신하는 data/metrics/latest.json
+               — 순차 --ai-gen 파이프라인의 '신선한' 피드백. (기존엔 멀티에이전트
+               전용 coverage_*.json만 읽어, 순차 모드에선 낡은 파일을 매 사이클
+               반복 로드 → 적응이 전혀 안 되는 버그가 있었음.)
+        2순위: Agent-31이 쓰는 coverage_*.json (멀티에이전트 모드 폴백)
+        사이클 1은 직전 실행의 잔존 피드백 오염을 막기 위해 균등 분포로 시작.
+        """
+        if cycle <= 1:
+            print(f"[Agent-00] 사이클 1 — 피드백 없이 균등 분포로 시작")
+            return
+
+        # 1순위: latest.json (가장 신선 — evaluate_model.py가 직전 사이클에 기록)
+        latest_path = os.path.join(METRICS_DIR, "latest.json")
+        if os.path.exists(latest_path):
             try:
-                with open(coverage_files[-1]) as f:
-                    cov = json.load(f)
-                self._prev_recall = cov.get("per_attack_recall", {})
+                with open(latest_path) as f:
+                    data = json.load(f)
+                par = data.get("per_attack_recall")
+                if par:
+                    self._prev_recall = par
             except Exception:
                 pass
 
-        # FP 패턴 (Agent-30)
+        # 2순위(폴백): coverage_*.json (멀티에이전트 모드)
+        if not self._prev_recall:
+            coverage_files = sorted(glob.glob(f"{METRICS_DIR}/coverage_*.json"))
+            if coverage_files:
+                try:
+                    with open(coverage_files[-1]) as f:
+                        cov = json.load(f)
+                    self._prev_recall = cov.get("per_attack_recall", {})
+                except Exception:
+                    pass
+
+        # FP 패턴 (Agent-30, 있으면)
         fp_files = sorted(glob.glob(f"{METRICS_DIR}/fp_analysis_*.json"))
         if fp_files:
             try:
@@ -141,7 +172,7 @@ class AdaptivePacketGenerator:
         가중치 = 1 + (TARGET_RECALL - recall) * BOOST_FACTOR
         Recall 정보 없으면 1.0 유지.
         """
-        BOOST_FACTOR = 3.0
+        BOOST_FACTOR = 1.5   # 과증량 방지 (기존 3.0 → 취약 유형이 정상영역 샘플로 과대 증량되어 precision 붕괴)
         total = 0.0
         for attack in ATTACK_TYPES:
             recall = self._prev_recall.get(attack)
@@ -171,6 +202,11 @@ class AdaptivePacketGenerator:
             self._gen_normal_ftp,
             self._gen_normal_stream,
             self._gen_normal_email,
+            self._gen_normal_voip,
+            self._gen_normal_gaming,
+            self._gen_normal_iot,
+            self._gen_normal_backup,
+            self._gen_normal_ssh,
         ]
         n_per = n // len(generators)
         # 사이클 기반 분포 확장 계수 (최대 1.5배)
@@ -219,10 +255,10 @@ class AdaptivePacketGenerator:
             "duration":        np.random.uniform(10,     300 * spread,   n),
             "protocol":        np.zeros(n, dtype=int),
             "src_port":        np.random.randint(1024, 65535,            n),
-            "dst_port":        np.random.choice([21, 22, 445, 2049],     n),
+            "dst_port":        np.random.choice([21, 22, 990, 2049],     n),
             "packet_size":     np.random.uniform(1000,   1500,           n),
-            "packets_per_sec": np.random.uniform(10,     100,            n),
-            "bytes_per_sec":   np.random.uniform(50000,  800_000,        n),
+            "packets_per_sec": np.random.uniform(5,      45,             n),
+            "bytes_per_sec":   np.random.uniform(50000,  500_000,        n),
             "unique_dst_ports":np.ones(n, dtype=int),
             "connection_count":np.random.randint(1, 5,  n),
             "failed_attempts": np.random.randint(0, 2,  n),
@@ -268,6 +304,96 @@ class AdaptivePacketGenerator:
             "attack_type":     ["normal_email"] * n,
         })
 
+    def _gen_normal_voip(self, n: int, spread: float) -> pd.DataFrame:
+        return pd.DataFrame({
+            "duration":        np.random.uniform(60,    3600 * spread,   n),
+            "protocol":        np.ones(n, dtype=int),
+            "src_port":        np.random.randint(1024, 65535, n),
+            "dst_port":        np.random.choice([3478, 5004, 8801, 19302], n),
+            "packet_size":     np.random.uniform(80,    250,             n),
+            "packets_per_sec": np.random.uniform(20,    50,              n),
+            "bytes_per_sec":   np.random.uniform(15000, 150000,          n),
+            "unique_dst_ports":np.random.randint(1, 3,  n),
+            "connection_count":np.random.randint(1, 4,  n),
+            "failed_attempts": np.zeros(n, dtype=int),
+            "outbound_ratio":  np.random.uniform(0.45,  0.55,            n),
+            "syn_flag_ratio":  np.zeros(n),
+            "label":           np.zeros(n, dtype=int),
+            "attack_type":     ["normal_voip"] * n,
+        })
+
+    def _gen_normal_gaming(self, n: int, spread: float) -> pd.DataFrame:
+        return pd.DataFrame({
+            "duration":        np.random.uniform(600,   14400 * spread,  n),
+            "protocol":        np.ones(n, dtype=int),
+            "src_port":        np.random.randint(1024, 65535, n),
+            "dst_port":        np.random.choice([27015, 27016, 3074, 25565], n),
+            "packet_size":     np.random.uniform(40,    200,             n),
+            "packets_per_sec": np.random.uniform(10,    48,              n),
+            "bytes_per_sec":   np.random.uniform(5000,  80000,           n),
+            "unique_dst_ports":np.random.randint(1, 3,  n),
+            "connection_count":np.random.randint(1, 5,  n),
+            "failed_attempts": np.random.randint(0, 2,  n),
+            "outbound_ratio":  np.random.uniform(0.4,   0.6,             n),
+            "syn_flag_ratio":  np.zeros(n),
+            "label":           np.zeros(n, dtype=int),
+            "attack_type":     ["normal_gaming"] * n,
+        })
+
+    def _gen_normal_iot(self, n: int, spread: float) -> pd.DataFrame:
+        return pd.DataFrame({
+            "duration":        np.random.uniform(0.01,  1,               n),
+            "protocol":        np.random.choice([0, 1], n, p=[0.5, 0.5]),
+            "src_port":        np.random.randint(1024, 65535, n),
+            "dst_port":        np.random.choice([1883, 8883, 5683], n),
+            "packet_size":     np.random.uniform(20,    100,             n),
+            "packets_per_sec": np.random.uniform(0.1,   5,               n),
+            "bytes_per_sec":   np.random.uniform(10,    2000,            n),
+            "unique_dst_ports":np.ones(n, dtype=int),
+            "connection_count":np.random.randint(1, 3,  n),
+            "failed_attempts": np.zeros(n, dtype=int),
+            "outbound_ratio":  np.random.uniform(0.6,   0.9,             n),
+            "syn_flag_ratio":  np.random.uniform(0.0,   0.05,            n),
+            "label":           np.zeros(n, dtype=int),
+            "attack_type":     ["normal_iot"] * n,
+        })
+
+    def _gen_normal_backup(self, n: int, spread: float) -> pd.DataFrame:
+        return pd.DataFrame({
+            "duration":        np.random.uniform(300,   7200 * spread,   n),
+            "protocol":        np.zeros(n, dtype=int),
+            "src_port":        np.random.randint(1024, 65535, n),
+            "dst_port":        np.random.choice([443, 873, 2049, 636], n),
+            "packet_size":     np.random.uniform(1000,  1500,            n),
+            "packets_per_sec": np.random.uniform(10,    45,              n),
+            "bytes_per_sec":   np.random.uniform(200000, 2000000,        n),
+            "unique_dst_ports":np.random.randint(1, 3,  n),
+            "connection_count":np.random.randint(1, 5,  n),
+            "failed_attempts": np.random.randint(0, 2,  n),
+            "outbound_ratio":  np.random.uniform(0.5,   0.72,            n),
+            "syn_flag_ratio":  np.random.uniform(0.03,  0.1,             n),
+            "label":           np.zeros(n, dtype=int),
+            "attack_type":     ["normal_backup"] * n,
+        })
+
+    def _gen_normal_ssh(self, n: int, spread: float) -> pd.DataFrame:
+        return pd.DataFrame({
+            "duration":        np.random.uniform(30,    3600 * spread,   n),
+            "protocol":        np.zeros(n, dtype=int),
+            "src_port":        np.random.randint(1024, 65535, n),
+            "dst_port":        np.full(n, 22),
+            "packet_size":     np.random.uniform(100,   600,             n),
+            "packets_per_sec": np.random.uniform(1,     20,              n),
+            "bytes_per_sec":   np.random.uniform(500,   50000,           n),
+            "unique_dst_ports":np.ones(n, dtype=int),
+            "connection_count":np.random.randint(1, 4,  n),
+            "failed_attempts": np.random.randint(0, 2,  n),
+            "outbound_ratio":  np.random.uniform(0.35,  0.6,             n),
+            "syn_flag_ratio":  np.random.uniform(0.05,  0.2,             n),
+            "label":           np.zeros(n, dtype=int),
+            "attack_type":     ["normal_ssh"] * n,
+        })
+
     # ── Step 4: 공격 트래픽 생성 (적응형) ────────────────────────────────────
 
     def _generate_attacks(self, n_total: int, cycle: int) -> pd.DataFrame:
@@ -286,8 +412,10 @@ class AdaptivePacketGenerator:
             counts[attack] = n
 
             recall = self._prev_recall.get(attack)
-            # 취약 유형은 분포 확장 (더 어렵고 다양한 샘플)
-            difficulty = 1.0 if recall is None else max(0.5, min(2.0, 1.0 + (TARGET_RECALL - recall) * 2))
+            # 취약 유형은 분포를 경계 쪽으로 약간만 확장.
+            # 상한 1.4로 제한 — difficulty가 공격 피처를 정상 영역까지 밀어
+            # 라벨 노이즈(정상처럼 보이는 공격)를 만들지 않도록 함 (precision 보호).
+            difficulty = 1.0 if recall is None else max(1.0, min(1.4, 1.0 + (TARGET_RECALL - recall) * 1.0))
             dfs.append(self._gen_attack(attack, n, cycle, difficulty))
 
         # 수 보정 (rounding 오차)
@@ -462,7 +590,7 @@ class AdaptivePacketGenerator:
                 "duration":        _u(0.1, 2),
                 "protocol":        np.random.choice([0, 1], n, p=[0.6, 0.4]),
                 "src_port":        _i(1024, 65535),
-                "dst_port":        np.random.choice([4444, 6667, 1080, 8443, 9001, 443, 80], n),  # difficulty 높으면 정상 포트 포함
+                "dst_port":        np.random.choice([4444, 6667, 1080, 8443, 9001], n),  # C2 전용 포트 (정상 80/443 제외 — precision 보호)
                 "packet_size":     _u(64, 300),
                 "packets_per_sec": _u(0.1, max(2, 5 * d)),
                 "bytes_per_sec":   _u(100, 10000),
@@ -507,6 +635,60 @@ class AdaptivePacketGenerator:
                 "failed_attempts": _i(max(0, int(5 / d)), 50),
                 "outbound_ratio":  _u(0.5, 0.8),
                 "syn_flag_ratio":  np.zeros(n),
+                "label":           np.ones(n, dtype=int),
+                "attack_type":     [attack_type] * n,
+            })
+
+        elif attack_type == "cryptomining":
+            df = pd.DataFrame({
+                "duration":        _u(3600, 86400),
+                "protocol":        np.zeros(n, dtype=int),
+                "src_port":        _i(1024, 65535),
+                "dst_port":        np.random.choice([3333, 14444, 45700, 9999], n),
+                "packet_size":     _u(200, 800),
+                "packets_per_sec": _u(1, 10),
+                "bytes_per_sec":   _u(10_000, 200_000),
+                "unique_dst_ports":np.ones(n, dtype=int),
+                "connection_count":_i(1, 4),
+                "failed_attempts": np.zeros(n, dtype=int),
+                "outbound_ratio":  _u(0.7, 0.95),
+                "syn_flag_ratio":  _u(0.05, 0.15),
+                "label":           np.ones(n, dtype=int),
+                "attack_type":     [attack_type] * n,
+            })
+
+        elif attack_type == "dns_amplification":
+            df = pd.DataFrame({
+                "duration":        _u(1, 60),
+                "protocol":        np.ones(n, dtype=int),
+                "src_port":        _i(1024, 65535),
+                "dst_port":        np.full(n, 53),
+                "packet_size":     _u(1000, 4000),
+                "packets_per_sec": _u(100, 5000),
+                "bytes_per_sec":   _u(5_000_000, 100_000_000),
+                "unique_dst_ports":np.ones(n, dtype=int),
+                "connection_count":_i(100, 5001),
+                "failed_attempts": _i(0, 10),
+                "outbound_ratio":  _u(0.05, 0.25),
+                "syn_flag_ratio":  np.zeros(n),
+                "label":           np.ones(n, dtype=int),
+                "attack_type":     [attack_type] * n,
+            })
+
+        elif attack_type == "credential_stuffing":
+            df = pd.DataFrame({
+                "duration":        _u(0.1, 2),
+                "protocol":        np.zeros(n, dtype=int),
+                "src_port":        _i(1024, 65535),
+                "dst_port":        np.random.choice([80, 443, 22, 25], n),
+                "packet_size":     _u(200, 600),
+                "packets_per_sec": _u(1, 15),
+                "bytes_per_sec":   _u(500, 10_000),
+                "unique_dst_ports":_i(1, 3),
+                "connection_count":_i(50, 500),
+                "failed_attempts": _i(3, 20),    # 낮음 (브루트포스 50~500과 구별)
+                "outbound_ratio":  _u(0.4, 0.65),
+                "syn_flag_ratio":  _u(0.1, 0.3),
                 "label":           np.ones(n, dtype=int),
                 "attack_type":     [attack_type] * n,
             })
@@ -655,5 +837,5 @@ class AdaptivePacketGenerator:
 
         # 경계 샘플 건수
         boundary_total = sum((df["attack_type"] == a).sum() for a in ["portscan", "ddos", "exfiltration", "botnet_c2"])
-        print(f"\n  경계 샘플 포함: ~{int(len(df)*0.05):,}건 (전체의 5%)")
+        print(f"\n  경계 샘플 포함: ~{int(len(df)*0.02):,}건 (전체의 2%)")
         print(f"OUTPUT_FILE:{filename}")
