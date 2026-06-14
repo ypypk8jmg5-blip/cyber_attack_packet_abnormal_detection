@@ -35,12 +35,12 @@ RECALL_TARGET = 0.90
 PRECISION_TARGET = 0.88
 
 
-def generate_test_data():
+def generate_test_data(seed=None):
     """평가 전용 테스트 데이터 생성"""
-    result = subprocess.run(
-        [sys.executable, 'scripts/generate_packets.py', '--mode', 'test', '--size', '1000'],
-        capture_output=True, text=True
-    )
+    cmd = [sys.executable, 'scripts/generate_packets.py', '--mode', 'test', '--size', '1000']
+    if seed is not None:
+        cmd += ['--seed', str(seed)]
+    result = subprocess.run(cmd, capture_output=True, text=True)
     output = result.stdout
     for line in output.splitlines():
         if line.startswith('OUTPUT_FILE:'):
@@ -65,6 +65,7 @@ def main():
     parser = argparse.ArgumentParser(description='모델 성능 평가기')
     parser.add_argument('--model', type=str, required=True, help='평가할 모델 경로')
     parser.add_argument('--cycle', type=int, default=1, help='현재 사이클 번호')
+    parser.add_argument('--seed', type=int, default=None, help='테스트 데이터 생성 시드 (재현용)')
     args = parser.parse_args()
 
     # 모델 로드
@@ -73,7 +74,7 @@ def main():
     scaler = bundle['scaler']
 
     # 테스트 데이터 생성
-    test_file = generate_test_data()
+    test_file = generate_test_data(seed=args.seed)
     df = pd.read_csv(test_file)
 
     X = df[FEATURE_COLS].values

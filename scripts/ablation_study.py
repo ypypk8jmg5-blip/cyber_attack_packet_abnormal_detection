@@ -71,8 +71,12 @@ HARD_ATTACKS = ['dns_tunneling', 'slowloris', 'cryptomining', 'credential_stuffi
 # ── 데이터 생성 ────────────────────────────────────────────────────────────
 
 def generate_base(n_total: int, seed: int) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """증강 없는 기본 데이터 (공격/정상 분리 반환)"""
-    rng = np.random.default_rng(seed)
+    """증강 없는 기본 데이터 (공격/정상 분리 반환).
+
+    NOTE: 패킷 생성기와 이후의 borderline/heavy/noise 샘플링은 모두
+    전역 numpy RNG(np.random.*, pandas sample(random_state=None))를 사용하므로
+    여기서 전역 시드를 고정해야 실험 전체가 시드별로 재현 가능하다."""
+    np.random.seed(seed)
     n_normal = int(n_total * 0.65)
     n_attack = n_total - n_normal
 

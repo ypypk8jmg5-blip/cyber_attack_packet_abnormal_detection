@@ -630,9 +630,14 @@ def main():
     parser.add_argument('--cycle', type=int, default=1)
     parser.add_argument('--size', type=int, default=0, help='0이면 사이클 기준 자동 설정')
     parser.add_argument('--mode', type=str, default='train', choices=['train', 'test'])
+    parser.add_argument('--seed', type=int, default=None,
+                        help='전역 numpy 시드 고정 (재현 가능한 데이터 생성)')
     parser.add_argument('--ai', action='store_true',
                         help='AI 적응형 생성 모드 (Agent-00): 이전 사이클 Recall 피드백 반영')
     args = parser.parse_args()
+
+    if args.seed is not None:
+        np.random.seed(args.seed)
 
     import time as _time
     start = _time.time()
